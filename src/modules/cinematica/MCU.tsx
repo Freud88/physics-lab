@@ -16,9 +16,9 @@ function buildPoints(r: number, T: number, duration: number, steps = 400) {
 }
 
 export default function MCU() {
-  const [r, setR] = useState(3)
+  const [r, setR] = useState(5)
   const [T, setT] = useState(4)
-  const [duration, setDuration] = useState(8)
+  const [duration, setDuration] = useState(12)
   const [currentTime, setCurrentTime] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const rafRef = useRef<number | null>(null)
@@ -26,8 +26,8 @@ export default function MCU() {
 
   const omega = (2 * Math.PI) / T
   const f = 1 / T
-  const v = r * omega  // tangential speed
-  const ac = r * omega * omega  // centripetal acceleration
+  const v = r * omega
+  const ac = r * omega * omega
 
   const theta = omega * currentTime
   const bx = r * Math.cos(theta)
@@ -60,25 +60,34 @@ export default function MCU() {
   function handleReset() { setIsPlaying(false); setCurrentTime(0) }
   function handlePlay() { if (currentTime >= duration) setCurrentTime(0); setIsPlaying(true) }
 
-  // Scene — SVG coordinate system (y flipped)
-  const svgW = 340, svgH = 300
+  // Scene
+  const svgW = 300, svgH = 300
   const cx = svgW / 2, cy = svgH / 2
   const scale = Math.min((svgW * 0.38) / r, (svgH * 0.38) / r)
   const toSvgX = (x: number) => cx + x * scale
-  const toSvgY = (y: number) => cy - y * scale  // flip y
+  const toSvgY = (y: number) => cy - y * scale
 
   const bodySvgX = toSvgX(bx)
   const bodySvgY = toSvgY(by)
 
-  // Velocity direction: tangent = (-sin θ, cos θ) in math coords → in SVG: (-sin θ, -cos θ)
   const vTangX = -Math.sin(theta)
   const vTangY = Math.cos(theta)
-  const velLen = Math.min(90, v * 20)
+  const velLen = Math.min(90, v * 15)
 
-  // Centripetal acceleration: points toward center = (-cos θ, -sin θ) in math coords
   const acDirX = -Math.cos(theta)
   const acDirY = -Math.sin(theta)
-  const acLen = Math.min(70, ac * 18)
+  const acLen = Math.min(70, ac * 12)
+
+  // Traccia percorso (arco già percorso)
+  const trailPoints: string[] = []
+  const trailSteps = 60
+  for (let i = 0; i <= trailSteps; i++) {
+    const t = (i / trailSteps) * currentTime
+    const th = omega * t
+    const tx = toSvgX(r * Math.cos(th))
+    const ty = toSvgY(r * Math.sin(th))
+    trailPoints.push(`${tx},${ty}`)
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -87,11 +96,11 @@ export default function MCU() {
         <aside className="w-56 flex-shrink-0 border-r border-slate-800 bg-slate-900/50 p-4 overflow-y-auto">
           <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Parametri MCU</h3>
           <div className="space-y-5">
-            <SliderInput label="Raggio r" unit="m" min={0.5} max={10} step={0.5} value={r}
+            <SliderInput label="Raggio r" unit="m" min={0.1} max={100} step={0.5} value={r}
               onChange={v => { setR(v); handleReset() }} />
-            <SliderInput label="Periodo T" unit="s" min={0.5} max={10} step={0.5} value={T}
+            <SliderInput label="Periodo T" unit="s" min={0.1} max={60} step={0.1} value={T}
               onChange={v => { setT(v); handleReset() }} />
-            <SliderInput label="Durata" unit="s" min={1} max={30} step={1} value={duration}
+            <SliderInput label="Durata" unit="s" min={1} max={120} step={1} value={duration}
               onChange={v => { setDuration(v); handleReset() }} />
           </div>
 
@@ -103,6 +112,7 @@ export default function MCU() {
             <InfoRow label="|aₙ|" value={`${ac.toFixed(3)} m/s²`} color="text-rose-400" />
             <InfoRow label="θ" value={`${((theta * 180) / Math.PI % 360).toFixed(1)}°`} />
             <InfoRow label="t" value={`${currentTime.toFixed(2)} s`} />
+            <InfoRow label="giri" value={`${(currentTime / T).toFixed(2)}`} />
           </div>
 
           <div className="mt-4 p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 space-y-1">
@@ -114,56 +124,75 @@ export default function MCU() {
 
         {/* Right: scene + graphs */}
         <div className="flex-1 flex flex-col min-h-0">
-          {/* Scene */}
-          <div className="flex-1 bg-slate-950 flex items-center justify-center min-h-0 overflow-hidden p-2">
-            <svg viewBox={`0 0 ${svgW} ${svgH}`} className="h-full" style={{ maxHeight: 300 }} preserveAspectRatio="xMidYMid meet">
-              {/* Axes */}
-              <line x1={cx} y1={20} x2={cx} y2={svgH - 20} stroke="#1e293b" strokeWidth={1} />
-              <line x1={20} y1={cy} x2={svgW - 20} y2={cy} stroke="#1e293b" strokeWidth={1} />
+          <div className="flex flex-1 min-h-0 overflow-hidden">
+            {/* Scena circolare */}
+            <div className="flex-none bg-slate-950 flex items-center justify-center p-2" style={{ width: 220 }}>
+              <svg viewBox={`0 0 ${svgW} ${svgH}`} className="h-full" style={{ maxHeight: 300 }} preserveAspectRatio="xMidYMid meet">
+                {/* Assi */}
+                <line x1={cx} y1={20} x2={cx} y2={svgH - 20} stroke="#1e293b" strokeWidth={1} />
+                <line x1={20} y1={cy} x2={svgW - 20} y2={cy} stroke="#1e293b" strokeWidth={1} />
 
-              {/* Orbit circle */}
-              <circle cx={cx} cy={cy} r={r * scale} fill="none" stroke="#334155" strokeWidth={1.5} strokeDasharray="5 4" />
+                {/* Orbita */}
+                <circle cx={cx} cy={cy} r={r * scale} fill="none" stroke="#1e3a5f" strokeWidth={2} />
 
-              {/* Radius line */}
-              <line x1={cx} y1={cy} x2={bodySvgX} y2={bodySvgY} stroke="#475569" strokeWidth={1} strokeDasharray="3 3" />
-              <text x={(cx + bodySvgX) / 2 + 4} y={(cy + bodySvgY) / 2 - 4} fill="#64748b" fontSize="10">r</text>
+                {/* Traccia percorso */}
+                {currentTime > 0.05 && (
+                  <polyline
+                    points={trailPoints.join(' ')}
+                    fill="none"
+                    stroke="#38bdf8"
+                    strokeWidth={1.5}
+                    strokeOpacity={0.35}
+                  />
+                )}
 
-              {/* Center dot */}
-              <circle cx={cx} cy={cy} r={3} fill="#475569" />
+                {/* Raggio */}
+                <line x1={cx} y1={cy} x2={bodySvgX} y2={bodySvgY} stroke="#475569" strokeWidth={1} strokeDasharray="3 3" />
+                <text x={(cx + bodySvgX) / 2 + 4} y={(cy + bodySvgY) / 2 - 4} fill="#64748b" fontSize="10">r</text>
 
-              {/* Body */}
-              <circle cx={bodySvgX} cy={bodySvgY} r={12} fill="#0369a1" stroke="#38bdf8" strokeWidth={1.5} />
-              <circle cx={bodySvgX} cy={bodySvgY} r={4} fill="#bae6fd" />
+                {/* Centro */}
+                <circle cx={cx} cy={cy} r={4} fill="#475569" />
 
-              {/* Centripetal acceleration (toward center, red) */}
-              <VectorArrow
-                x={bodySvgX} y={bodySvgY}
-                dx={acDirX} dy={-acDirY}
-                length={acLen}
-                color="#f43f5e"
-                label="aₙ"
-                strokeWidth={2.5}
-              />
+                {/* Accelerazione centripeta (rosa, verso centro) */}
+                <VectorArrow
+                  x={bodySvgX} y={bodySvgY}
+                  dx={acDirX} dy={-acDirY}
+                  length={acLen}
+                  color="#f43f5e"
+                  label="aₙ"
+                  strokeWidth={2.5}
+                />
 
-              {/* Velocity (tangential, blue) */}
-              <VectorArrow
-                x={bodySvgX} y={bodySvgY}
-                dx={vTangX} dy={-vTangY}
-                length={velLen}
-                color="#38bdf8"
-                label="v"
-                strokeWidth={2.5}
-              />
-            </svg>
-          </div>
+                {/* Velocità tangenziale (blu) */}
+                <VectorArrow
+                  x={bodySvgX} y={bodySvgY}
+                  dx={vTangX} dy={-vTangY}
+                  length={velLen}
+                  color="#38bdf8"
+                  label="v"
+                  strokeWidth={2.5}
+                />
 
-          {/* Graphs */}
-          <div className="grid grid-cols-2 gap-2 px-3 py-3 border-t border-slate-800 bg-slate-900/30">
-            <div className="bg-slate-900 rounded-lg p-1 border border-slate-800" style={{ height: 130 }}>
-              <Graph points={graphData.x} currentT={currentTime} label="x(t) = r·cos(ωt)" unit="m" color="#38bdf8" yMin={-r * 1.1} yMax={r * 1.1} />
+                {/* Corpo — scatola */}
+                <rect
+                  x={bodySvgX - 10} y={bodySvgY - 10}
+                  width={20} height={20}
+                  rx={3}
+                  fill="#0369a1" stroke="#38bdf8" strokeWidth={1.5}
+                />
+              </svg>
             </div>
-            <div className="bg-slate-900 rounded-lg p-1 border border-slate-800" style={{ height: 130 }}>
-              <Graph points={graphData.y} currentT={currentTime} label="y(t) = r·sin(ωt)" unit="m" color="#a78bfa" yMin={-r * 1.1} yMax={r * 1.1} />
+
+            {/* Grafici */}
+            <div className="flex-1 flex flex-col gap-2 p-3 justify-center">
+              <div className="bg-slate-900 rounded-lg p-1 border border-slate-800" style={{ height: 130 }}>
+                <Graph points={graphData.x} currentT={currentTime} label="x(t) = r·cos(ωt)" unit="m" color="#38bdf8"
+                  yMin={-r * 1.15} yMax={r * 1.15} />
+              </div>
+              <div className="bg-slate-900 rounded-lg p-1 border border-slate-800" style={{ height: 130 }}>
+                <Graph points={graphData.y} currentT={currentTime} label="y(t) = r·sin(ωt)" unit="m" color="#a78bfa"
+                  yMin={-r * 1.15} yMax={r * 1.15} />
+              </div>
             </div>
           </div>
         </div>
